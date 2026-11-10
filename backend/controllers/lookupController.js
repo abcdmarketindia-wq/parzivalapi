@@ -7,6 +7,12 @@ const { sha256 } = require('../utils/security');
 const { isRateLimited } = require('../utils/rateLimit');
 const { fail } = require('../utils/response');
 
+// The caller's balance on every API that is live, e.g. { vehicle: 98, hsrp: 12 }.
+async function callsLeft(userId) {
+  const limits = await limitModel.byApi(userId);
+  return Object.fromEntries(Object.keys(CATALOG).filter(isLive).map((id) => [id, limits[id] ?? 0]));
+}
+
 async function lookup(req, res) {
   const id = req.params.api;
   if (!Object.hasOwn(CATALOG, id)) return fail(res, 404, 'Unknown API.');
@@ -24,7 +30,11 @@ async function lookup(req, res) {
   // Reserve first, then refund if nothing is delivered.
   if (!(await limitModel.consume(key.user_id, id))) {
     await usageModel.log(key, id, 402, false);
-    return fail(res, 402, `No ${api.name} limits left. Contact the admin to get more calls.`);
+    return res.status(402).json({
+      success: false,
+      error: `No ${api.name} limits left. Contact the admin to get more calls.`,
+      calls_left: await callsLeft(key.user_id),
+    });
   }
   await apiKeyModel.touch(key.id);
 
@@ -45,11 +55,13 @@ async function lookup(req, res) {
   }
 
   await usageModel.log(key, id, 200, true);
+  const left = await callsLeft(key.user_id);
   res.json({
     success: true,
     api: id,
     charged: api.pricePaise / 100,
-    remaining: await limitModel.remaining(key.user_id, id),
+    remaining: left[id],
+    calls_left: left,
     data,
   });
 }

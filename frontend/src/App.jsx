@@ -266,7 +266,7 @@ function Pricing({ apis }) {
 const ERRORS = [
   ['400', 'The number is missing or badly formatted.', 'No'],
   ['401', 'API key is missing, invalid or revoked.', 'No'],
-  ['402', 'You have no limits left for this API.', 'No'],
+  ['402', 'You have no calls left for this API. The response includes calls_left.', 'No'],
   ['404', 'No record exists for this number, or the API name in the URL is wrong.', 'No'],
   ['429', 'More than 60 requests in a minute.', 'No'],
   ['502', 'The data source failed or timed out.', 'No'],
@@ -812,33 +812,101 @@ function StatsDashboard() {
   )
 }
 
-// Placeholder values only: real responses describe a real vehicle and its owner.
+// Field names and types match the live providers (checked Nov 2026). Every value is
+// made up: real responses describe a real vehicle and its owner.
 const SAMPLE_DATA = {
   vehicle: {
     REGN_NO: 'MH12AB1234',
-    '...': 'other registration fields from VAHAN',
+    REGN_DT: '15-Mar-2019',
+    REGN_UPTO: '14-Mar-2034',
+    OWNER_NAME: 'RAHUL SHARMA',
+    F_NAME: 'SURESH SHARMA',
+    STATE_CD: 'MH',
+    RTO_CD: 'MH12',
+    PRESENT_ADDRESS: 'FLAT 12, SAMPLE SOCIETY, PUNE, 411001',
+    PERMANENT_ADDRESS: 'FLAT 12, SAMPLE SOCIETY, PUNE, 411001',
+    MOBILE_NO: '98XXXXXX10',
+    CHASI_NO: 'MA3XXXXXXXX123456',
+    ENG_NO: 'K12MXXXX1234',
+    MAKER_DESC: 'MARUTI SUZUKI INDIA LTD',
+    MAKER_MODEL: 'SWIFT VXI',
+    BODY_TYPE_DESC: 'SALOON',
+    FUEL_DESC: 'PETROL',
+    COLOR: 'WHITE',
+    FIT_UPTO: '14-Mar-2034',
+    INSURANCE_COMP: 'SAMPLE GENERAL INSURANCE CO. LTD.',
+    INSURANCE_UPTO: '10-Mar-2027',
+    MANU_MONTH_YR: '02/2019',
+    POLICY_NO: '',
+    PUC_UPTO: '20-Aug-2026',
+    INS_POLICY_NO: 'XXXXXXXX1234',
+    FINANCER_DETAILS: '',
+    PERMIT_NO: '',
+    PERMIT_ISSUE_DATE: '',
+    RC_NP_NO: '',
+    REGISTERED_AT: 'PUNE RTO, Maharashtra',
+    STATUS_AS_ON: '10-Nov-2026',
+    PUCC_UPTO: '20-Aug-2026',
+    PUCC_NO: 'MH01200XXXXXX',
+    STATUS: 'ACTIVE',
+    VEHICLE_SURRENDERED_TO_DEALER: 'N',
+    CURRENTADD_STATENAME: 'Maharashtra',
+    CURRENTADD_DISTRICTCODE: 'PUNE',
+    CURRENTADD_PINCODE: '411001',
+    VEHICLE_CLASS: 'Motor Car(LMV)',
+    VEHICLE_CATEGORY: 'LMV',
+    SEATING_CAPACITY: 5,
+    SLEEPER_CAPACITY: '0',
+    STANDING_CAPACITY: '0',
+    OWNER_SERIAL_NO: 1,
+    UNLADEN_WEIGHT: '875',
+    LADEN_WEIGHT: '1340',
+    WHEELBASE: '2450',
+    NO_OF_CYLINDERS: '4',
+    CUBIC_CAPACITY: 1197,
+    FUEL_NORMS: 'BHARAT STAGE IV',
+    TAX_UPTO: 'LTT',
+    BLACKLIST_STATUS: '',
+    NOC_DETAILS: '',
+    IS_COMMERCIAL: 'N',
   },
   hsrp: {
-    status: 'string',
+    status: 'Success',
     regno: 'MH12AB1234',
-    chassis: 'string',
-    engine: 'string',
+    chassis: 'MA3XXXXXXXX123456',
+    engine: 'K12MXXXX1234',
     hsrp_response: {
-      message: 'string',
-      fuel: 'string',
-      maker: 'string',
-      vchType: 'string',
-      norms: 'string',
-      vchCatg: 'string',
-      regnDate: 'string',
-      hsrpFrontLaserCode: 'string',
-      hsrpRearLaserCode: 'string',
-      stateCd: 'string',
-      offCd: 0,
-      mobileNumberValidation: {},
+      message: 'Success',
+      fuel: 'PETROL',
+      maker: 'MARUTI SUZUKI INDIA LTD',
+      vchType: 'Non-Transport',
+      norms: 'BHARAT STAGE IV',
+      vchCatg: 'LMV',
+      regnDate: '15-Mar-2019',
+      hsrpFrontLaserCode: 'XXXXXXXXXX1234',
+      hsrpRearLaserCode: 'XXXXXXXXXX1235',
+      stateCd: 'MH',
+      offCd: 12,
+      mobileNumberValidation: null,
     },
   },
 }
+
+// Example balances for the demo responses: the called API's balance has just gone down.
+const sampleCallsLeft = (apiId) => ({ vehicle: apiId === 'vehicle' ? 99 : 250, hsrp: apiId === 'hsrp' ? 99 : 40 })
+
+const RESPONSE_FIELDS = [
+  ['success', '`true` when the lookup worked.'],
+  ['api', 'Which API you called: `vehicle` or `hsrp`.'],
+  ['charged', 'The list price of this call in rupees.'],
+  ['remaining', 'Calls you have left on this API, after this call.'],
+  ['calls_left', 'Calls you have left on every API, e.g. `{ "vehicle": 99, "hsrp": 40 }`.'],
+  ['data', 'The record from the data source. Fields are listed in the example below.'],
+]
+
+// Renders `code` spans inside short help text.
+const withCode = (text) =>
+  text.split(/(`[^`]+`)/).map((part, i) => (part.startsWith('`') ? <code key={i}>{part.slice(1, -1)}</code> : part))
 
 const API_TITLES = { vehicle: 'Vehicle (VAHAN)', hsrp: 'HSRP' }
 
@@ -852,8 +920,25 @@ function ApiDocs({ apis }) {
   const endpoint = `${DOCS_BASE}/v1/${api.id}`
   const exampleUrl = `${endpoint}?number=${api.example}`
   const samples = buildSamples(DOCS_BASE, api)
+  const callsLeft = sampleCallsLeft(api.id)
   const response = JSON.stringify(
-    { success: true, api: api.id, charged: api.price, remaining: 99, data: SAMPLE_DATA[api.id] },
+    {
+      success: true,
+      api: api.id,
+      charged: api.price,
+      remaining: callsLeft[api.id],
+      calls_left: callsLeft,
+      data: SAMPLE_DATA[api.id],
+    },
+    null,
+    2,
+  )
+  const noCallsResponse = JSON.stringify(
+    {
+      success: false,
+      error: `No ${api.name} limits left. Contact the admin to get more calls.`,
+      calls_left: { ...callsLeft, [api.id]: 0 },
+    },
     null,
     2,
   )
@@ -933,11 +1018,34 @@ function ApiDocs({ apis }) {
 
       <div className="doc-block">
         <h3>Response</h3>
-        <p>
-          <code>data</code> holds the record. <code>remaining</code> is how many {API_TITLES[api.id]} calls you have
-          left. The values below are placeholders.
-        </p>
+        <div className="doc-table">
+          <table>
+            <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+            <tbody>
+              {RESPONSE_FIELDS.map(([field, meaning]) => (
+                <tr key={field}><td><code>{field}</code></td><td>{withCode(meaning)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="code-head">
+          <strong>Example: successful {API_TITLES[api.id]} lookup</strong>
+          <CopyButton value={response} />
+        </div>
         <pre><code>{response}</code></pre>
+        <p className="muted">
+          The field names are exactly what the API returns. The values are made up, so the example shows no real
+          vehicle or owner.
+        </p>
+      </div>
+
+      <div className="doc-block">
+        <h3>When you run out of calls</h3>
+        <p>
+          You get status <code>402</code>, and <code>calls_left</code> shows your balance on every API so you know what
+          to top up.
+        </p>
+        <pre><code>{noCallsResponse}</code></pre>
       </div>
 
       <div className="doc-block">
