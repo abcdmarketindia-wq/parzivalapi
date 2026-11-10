@@ -1,0 +1,18 @@
+# Secrets and local settings (API keys, upstream URLs). Commit .env.example instead.
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local databases: hold password hashes and customer data
+backend/data/
+*.db
+
+# Logs and editor files
+*.log
+.DS_Store
+.vscode/
+.idea/
