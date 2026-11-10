@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const {
+  getProviderUsage,
+  refreshProviderUsage,
   listUsers,
   createUser,
   listSales,
@@ -22,5 +24,7 @@ router.delete('/users/:id/keys/:keyId', revokeUserKey);
 router.get('/sales', listSales);
 router.post('/sales', createSale);
 router.get('/stats', getStats);
+router.get('/provider-usage', getProviderUsage);
+router.post('/provider-usage/:api/refresh', refreshProviderUsage);
 
 module.exports = router;

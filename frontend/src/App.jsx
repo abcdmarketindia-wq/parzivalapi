@@ -675,6 +675,75 @@ const STAT_COLUMNS = [
 
 const sumBy = (rows, pick) => rows.reduce((total, row) => total + pick(row), 0)
 
+// How long ago a timestamp was, e.g. "5 minutes ago".
+const ago = (ms) => {
+  const minutes = Math.round((Date.now() - ms) / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  return date(ms)
+}
+
+// Only the Vehicle provider reports its quota today; others appear here once they do.
+const PROVIDER_APIS = ['vehicle']
+
+function ProviderBalance() {
+  const [providers, setProviders] = useState(null)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    request('/api/admin/provider-usage')
+      .then((data) => setProviders(data.providers))
+      .catch((err) => setError(err.message))
+  }, [])
+
+  const refresh = async (api) => {
+    if (!window.confirm('Checking now makes 1 real lookup with your provider and uses 1 of your provider calls. Continue?')) return
+    setBusy(api)
+    setError('')
+    try {
+      setProviders((await request(`/api/admin/provider-usage/${api}/refresh`, { method: 'POST' })).providers)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="provider-balance">
+      {PROVIDER_APIS.map((api) => {
+        const p = providers?.find((x) => x.api === api)
+        const low = p && p.remaining <= p.total_limit * 0.1
+        return (
+          <div className="card provider-card" key={api}>
+            <div>
+              <span className="limit-name">{API_TITLES[api]} provider balance</span>
+              {p ? (
+                <>
+                  <strong className={low ? 'error' : ''}>{count(p.remaining)} left</strong>
+                  <span className="muted">
+                    {count(p.used)} used of {count(p.total_limit)} · updated {ago(p.checked_at)}
+                  </span>
+                  {low && <span className="error">Running low. Top up with your provider.</span>}
+                </>
+              ) : (
+                <span className="muted">{providers ? 'No reading yet. It updates on every lookup.' : 'Loading…'}</span>
+              )}
+            </div>
+            <button type="button" className="btn btn-quiet" disabled={busy === api} onClick={() => refresh(api)}>
+              {busy === api ? 'Checking…' : 'Check now'}
+            </button>
+          </div>
+        )
+      })}
+      {error && <p className="error" role="alert">{error}</p>}
+    </div>
+  )
+}
+
 function StatsDashboard() {
   const [day, setDay] = useState('')
   const [data, setData] = useState(null)
@@ -712,6 +781,7 @@ function StatsDashboard() {
           />
         </label>
       </div>
+      <ProviderBalance />
       <p className="muted">
         Calls per user for {data ? data.date === data.today ? 'today' : data.date : '…'} (India time).
         Opening is the balance when the day started; Left is the balance when it ended, or right now for today.

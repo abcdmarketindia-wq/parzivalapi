@@ -4,6 +4,9 @@ const usageModel = require('../models/usageModel');
 const saleModel = require('../models/saleModel');
 const apiKeyModel = require('../models/apiKeyModel');
 const { issueKey, TOO_MANY_KEYS } = require('./apiKeyController');
+const providerUsageModel = require('../models/providerUsageModel');
+const upstreamService = require('../services/upstreamService');
+const { CATALOG, isLive } = require('../config/catalog');
 const { isUniqueViolation } = require('../models/db');
 const { hashPassword } = require('../utils/security');
 const { fail } = require('../utils/response');
@@ -105,7 +108,28 @@ async function revokeUserKey(req, res) {
   res.json({ success: true });
 }
 
+async function getProviderUsage(_req, res) {
+  res.json({ providers: await providerUsageModel.list() });
+}
+
+// Makes one real lookup with the API's example number, only to read the provider's quota.
+// It costs one provider call, and is not charged to or logged against any customer.
+async function refreshProviderUsage(req, res) {
+  const id = req.params.api;
+  if (!Object.hasOwn(CATALOG, id)) return fail(res, 404, 'Unknown API.');
+  if (!isLive(id)) return fail(res, 400, `${CATALOG[id].name} is not set up.`);
+  try {
+    await upstreamService.fetchRecord(id, CATALOG[id].example);
+  } catch (err) {
+    console.error(`[${id}] quota check failed: ${err.name}`);
+    return fail(res, 502, 'The provider did not answer. Try again in a minute.');
+  }
+  res.json({ providers: await providerUsageModel.list() });
+}
+
 module.exports = {
+  getProviderUsage,
+  refreshProviderUsage,
   listUsers,
   createUser,
   listSales,
