@@ -3,7 +3,7 @@ import './App.css'
 
 const API_URL = (import.meta.env.VITE_API_URL || window.location.origin).replace(/\/+$/, '')
 // The public address customers call; examples in the docs always use it, even during local development.
-const DOCS_BASE = (import.meta.env.VITE_PUBLIC_API_URL || 'https://parzivalapi.online').replace(/\/+$/, '')
+const DOCS_BASE = (import.meta.env.VITE_PUBLIC_API_URL || 'https://api.parzivalapi.online').replace(/\/+$/, '')
 const SUPPORT_EMAIL = 'parziwalapi@gmail.com'
 const SupportLink = () => <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
 
@@ -267,7 +267,7 @@ const ERRORS = [
   ['400', 'The number is missing or badly formatted.', 'No'],
   ['401', 'API key is missing, invalid or revoked.', 'No'],
   ['402', 'You have no limits left for this API.', 'No'],
-  ['404', 'No record exists for this number.', 'No'],
+  ['404', 'No record exists for this number, or the API name in the URL is wrong.', 'No'],
   ['429', 'More than 60 requests in a minute.', 'No'],
   ['502', 'The data source failed or timed out.', 'No'],
   ['503', 'This API is temporarily unavailable.', 'No'],
