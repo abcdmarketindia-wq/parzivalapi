@@ -3,15 +3,22 @@ const { sha256, randomHex } = require('../utils/security');
 const { fail } = require('../utils/response');
 
 const MAX_ACTIVE_KEYS = 10;
+const TOO_MANY_KEYS = `A user can have at most ${MAX_ACTIVE_KEYS} active keys. Revoke one first.`;
+
+// Creates a key for userId and returns it in full, or null if they're at the limit.
+// Only the hash is stored, so this is the only time the full key exists.
+async function issueKey(userId, rawName) {
+  const name = String(rawName ?? '').trim().slice(0, 40) || 'Default';
+  if ((await apiKeyModel.countActive(userId)) >= MAX_ACTIVE_KEYS) return null;
+  const key = `pz_live_${randomHex(24)}`;
+  await apiKeyModel.create(userId, name, sha256(key), key.slice(0, 14));
+  return key;
+}
 
 async function createKey(req, res) {
-  const name = String(req.body?.name ?? '').trim().slice(0, 40) || 'Default';
-  if ((await apiKeyModel.countActive(req.user.id)) >= MAX_ACTIVE_KEYS) {
-    return fail(res, 400, `You can have at most ${MAX_ACTIVE_KEYS} active keys.`);
-  }
-  const key = `pz_live_${randomHex(24)}`;
-  await apiKeyModel.create(req.user.id, name, sha256(key), key.slice(0, 14));
-  res.status(201).json({ success: true, key }); // Only time the full key is ever returned.
+  const key = await issueKey(req.user.id, req.body?.name);
+  if (!key) return fail(res, 400, TOO_MANY_KEYS);
+  res.status(201).json({ success: true, key });
 }
 
 async function revokeKey(req, res) {
@@ -19,4 +26,4 @@ async function revokeKey(req, res) {
   res.json({ success: true });
 }
 
-module.exports = { createKey, revokeKey };
+module.exports = { createKey, revokeKey, issueKey, TOO_MANY_KEYS };

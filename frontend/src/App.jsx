@@ -137,7 +137,8 @@ function Limits({ apis, me }) {
   )
 }
 
-function Keys({ me, reload }) {
+// basePath is /api/keys for your own keys, or an admin path for another user's keys.
+function Keys({ keys, reload, basePath = '/api/keys', title = 'Your keys', titleId, children }) {
   const [name, setName] = useState('')
   const [created, setCreated] = useState('')
   const [error, setError] = useState('')
@@ -146,7 +147,7 @@ function Keys({ me, reload }) {
     e.preventDefault()
     setError('')
     try {
-      const { key } = await request('/api/keys', { method: 'POST', body: { name } })
+      const { key } = await request(basePath, { method: 'POST', body: { name } })
       setCreated(key)
       setName('')
       await reload()
@@ -159,7 +160,7 @@ function Keys({ me, reload }) {
     if (!window.confirm(`Revoke "${key.name}"? Apps using this key will stop working.`)) return
     setError('')
     try {
-      await request(`/api/keys/${key.id}`, { method: 'DELETE' })
+      await request(`${basePath}/${key.id}`, { method: 'DELETE' })
       await reload()
     } catch (err) {
       setError(err.message)
@@ -168,7 +169,7 @@ function Keys({ me, reload }) {
 
   return (
     <div className="card">
-      <h3>Your keys</h3>
+      <h3 id={titleId}>{title}</h3>
       <form className="row" onSubmit={create}>
         <input
           aria-label="Key name"
@@ -182,16 +183,18 @@ function Keys({ me, reload }) {
       {error && <p className="error" role="alert">{error}</p>}
       {created && (
         <div className="new-key">
-          <p><strong>Copy this key now.</strong> For your security it won't be shown again.</p>
+          <p><strong>Copy this key now.</strong> For security it won't be shown again.</p>
           <code>{created}</code>
           <CopyButton value={created} />
         </div>
       )}
-      {me.keys.length === 0 ? (
+      {keys === null ? (
+        <p className="muted">Loading…</p>
+      ) : keys.length === 0 ? (
         <p className="muted">No keys yet. Create one to start calling the API.</p>
       ) : (
         <ul className="list">
-          {me.keys.map((key) => (
+          {keys.map((key) => (
             <li key={key.id}>
               <div>
                 <strong>{key.name}</strong>
@@ -207,6 +210,7 @@ function Keys({ me, reload }) {
           ))}
         </ul>
       )}
+      {children}
     </div>
   )
 }
@@ -229,7 +233,7 @@ function ApiKeysPage({ me, reload, onAuth }) {
       <p className="muted">
         Create a key for each app or server, and revoke any key you no longer use or that may have leaked.
       </p>
-      {me ? <Keys me={me} reload={reload} /> : <AuthCard onDone={onAuth} />}
+      {me ? <Keys keys={me.keys} reload={reload} /> : <AuthCard onDone={onAuth} />}
     </section>
   )
 }
@@ -351,7 +355,40 @@ function CreateUser({ onCreated, onCancel }) {
   )
 }
 
-function UserRow({ user }) {
+function UserKeysPopup({ user, onClose }) {
+  const [keys, setKeys] = useState(null)
+  const [error, setError] = useState('')
+  const basePath = `/api/admin/users/${user.id}/keys`
+
+  const load = useCallback(async () => {
+    try {
+      setKeys((await request(basePath)).keys)
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [basePath])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  return (
+    <Popup titleId="user-keys-title" onClose={onClose}>
+      <Keys keys={keys} reload={load} basePath={basePath} title={`API keys for ${user.email}`} titleId="user-keys-title">
+        {error && <p className="error" role="alert">{error}</p>}
+        <p className="muted">
+          Keys you create here work exactly like keys the user makes, and show on their API keys page. Send the key to
+          them securely.
+        </p>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-quiet" onClick={onClose}>Close</button>
+        </div>
+      </Keys>
+    </Popup>
+  )
+}
+
+function UserRow({ user, onManageKeys }) {
   return (
     <tr>
       <td>
@@ -365,6 +402,11 @@ function UserRow({ user }) {
         </td>
       ))}
       <td>{date(user.created_at)}</td>
+      <td>
+        <button type="button" className="btn btn-quiet" onClick={() => onManageKeys(user)}>
+          API keys ({count(user.activeKeys ?? 0)})
+        </button>
+      </td>
     </tr>
   )
 }
@@ -555,6 +597,7 @@ function Users() {
   const [users, setUsers] = useState(null)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
+  const [keysFor, setKeysFor] = useState(null)
   const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
@@ -602,13 +645,22 @@ function Users() {
         <div className="doc-table">
           <table>
             <thead>
-              <tr><th>User ID</th><th>Vehicle calls left</th><th>HSRP calls left</th><th>Created</th></tr>
+              <tr><th>User ID</th><th>Vehicle calls left</th><th>HSRP calls left</th><th>Created</th><th></th></tr>
             </thead>
             <tbody>
-              {users.map((u) => <UserRow key={u.id} user={u} />)}
+              {users.map((u) => <UserRow key={u.id} user={u} onManageKeys={setKeysFor} />)}
             </tbody>
           </table>
         </div>
+      )}
+      {keysFor && (
+        <UserKeysPopup
+          user={keysFor}
+          onClose={() => {
+            setKeysFor(null)
+            load()
+          }}
+        />
       )}
     </section>
   )

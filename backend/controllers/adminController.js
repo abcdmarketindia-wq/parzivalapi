@@ -2,6 +2,8 @@ const userModel = require('../models/userModel');
 const limitModel = require('../models/limitModel');
 const usageModel = require('../models/usageModel');
 const saleModel = require('../models/saleModel');
+const apiKeyModel = require('../models/apiKeyModel');
+const { issueKey, TOO_MANY_KEYS } = require('./apiKeyController');
 const { isUniqueViolation } = require('../models/db');
 const { hashPassword } = require('../utils/security');
 const { fail } = require('../utils/response');
@@ -17,6 +19,7 @@ async function listUsers(_req, res) {
       ...user,
       limits: await limitModel.byApi(user.id),
       used: await usageModel.chargedByApi(user.id),
+      activeKeys: await apiKeyModel.countActive(user.id),
     })),
   );
   res.json({ users });
@@ -73,4 +76,41 @@ async function createSale(req, res) {
   res.status(201).json({ success: true, id });
 }
 
-module.exports = { listUsers, createUser, listSales, createSale };
+// Returns the user id from the URL, or sends a 404 and returns null.
+async function findUserId(req, res) {
+  const id = Number(req.params.id);
+  if (await userModel.exists(id)) return id;
+  fail(res, 404, 'User not found.');
+  return null;
+}
+
+async function listUserKeys(req, res) {
+  const id = await findUserId(req, res);
+  if (id === null) return;
+  res.json({ keys: await apiKeyModel.listActive(id) });
+}
+
+async function createUserKey(req, res) {
+  const id = await findUserId(req, res);
+  if (id === null) return;
+  const key = await issueKey(id, req.body?.name);
+  if (!key) return fail(res, 400, TOO_MANY_KEYS);
+  res.status(201).json({ success: true, key });
+}
+
+async function revokeUserKey(req, res) {
+  const id = await findUserId(req, res);
+  if (id === null) return;
+  if (!(await apiKeyModel.revoke(Number(req.params.keyId), id))) return fail(res, 404, 'Key not found.');
+  res.json({ success: true });
+}
+
+module.exports = {
+  listUsers,
+  createUser,
+  listSales,
+  createSale,
+  listUserKeys,
+  createUserKey,
+  revokeUserKey,
+};
