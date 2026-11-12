@@ -6,6 +6,7 @@ const {
   createUser,
   listSales,
   createSale,
+  setUserProvider,
   listUserKeys,
   createUserKey,
   revokeUserKey,
@@ -18,6 +19,7 @@ const router = Router();
 router.use(requireUser, requireAdmin);
 router.get('/users', listUsers);
 router.post('/users', createUser);
+router.put('/users/:id/provider', setUserProvider);
 router.get('/users/:id/keys', listUserKeys);
 router.post('/users/:id/keys', createUserKey);
 router.delete('/users/:id/keys/:keyId', revokeUserKey);

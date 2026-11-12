@@ -388,7 +388,39 @@ function UserKeysPopup({ user, onClose }) {
   )
 }
 
-function UserRow({ user, onManageKeys }) {
+// Lets the admin pick which provider answers this user's vehicle lookups.
+function ProviderSelect({ user, options, onChanged }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const change = async (provider) => {
+    setBusy(true)
+    setError('')
+    try {
+      await request(`/api/admin/users/${user.id}/provider`, { method: 'PUT', body: { api: 'vehicle', provider } })
+      await onChanged()
+    } catch (err) {
+      setError(err.message)
+    }
+    setBusy(false)
+  }
+  return (
+    <>
+      <select
+        aria-label={`Vehicle source for ${user.email}`}
+        value={user.providers?.vehicle ?? ''}
+        disabled={busy}
+        onChange={(e) => change(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.name}{o.live ? '' : ' (not set up)'}</option>
+        ))}
+      </select>
+      {error && <small className="error" role="alert"> {error}</small>}
+    </>
+  )
+}
+
+function UserRow({ user, providerOptions, onManageKeys, onChanged }) {
   return (
     <tr>
       <td>
@@ -401,6 +433,9 @@ function UserRow({ user, onManageKeys }) {
           <small className="muted"> · {count(user.used[api] ?? 0)} used</small>
         </td>
       ))}
+      <td>
+        <ProviderSelect user={user} options={providerOptions?.vehicle ?? []} onChanged={onChanged} />
+      </td>
       <td>{date(user.created_at)}</td>
       <td>
         <button type="button" className="btn btn-quiet" onClick={() => onManageKeys(user)}>
@@ -595,6 +630,7 @@ function Sales() {
 
 function Users() {
   const [users, setUsers] = useState(null)
+  const [providerOptions, setProviderOptions] = useState(null)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [keysFor, setKeysFor] = useState(null)
@@ -604,6 +640,7 @@ function Users() {
     try {
       const data = await request('/api/admin/users')
       setUsers(data.users)
+      setProviderOptions(data.providerOptions)
     } catch (err) {
       setError(err.message)
     }
@@ -628,7 +665,10 @@ function Users() {
           Add user
         </button>
       </div>
-      <p className="muted">Only you can create accounts. Calls are added by selling calls, and go down as the user makes calls.</p>
+      <p className="muted">
+        Only you can create accounts. Calls are added by selling calls, and go down as the user makes calls. Vehicle
+        source picks which provider answers that user's vehicle lookups; the change applies to their next call.
+      </p>
       {adding && (
         <AddUserPopup
           onClose={() => setAdding(false)}
@@ -645,10 +685,12 @@ function Users() {
         <div className="doc-table">
           <table>
             <thead>
-              <tr><th>User ID</th><th>Vehicle calls left</th><th>HSRP calls left</th><th>Created</th><th></th></tr>
+              <tr><th>User ID</th><th>Vehicle calls left</th><th>HSRP calls left</th><th>Vehicle source</th><th>Created</th><th></th></tr>
             </thead>
             <tbody>
-              {users.map((u) => <UserRow key={u.id} user={u} onManageKeys={setKeysFor} />)}
+              {users.map((u) => (
+                <UserRow key={u.id} user={u} providerOptions={providerOptions} onManageKeys={setKeysFor} onChanged={load} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -884,62 +926,105 @@ function StatsDashboard() {
 
 // Field names and types match the live providers (checked Nov 2026). Every value is
 // made up: real responses describe a real vehicle and its owner.
-const SAMPLE_DATA = {
-  vehicle: {
-    REGN_NO: 'MH12AB1234',
-    REGN_DT: '15-Mar-2019',
-    REGN_UPTO: '14-Mar-2034',
-    OWNER_NAME: 'RAHUL SHARMA',
-    F_NAME: 'SURESH SHARMA',
-    STATE_CD: 'MH',
-    RTO_CD: 'MH12',
-    PRESENT_ADDRESS: 'FLAT 12, SAMPLE SOCIETY, PUNE, 411001',
-    PERMANENT_ADDRESS: 'FLAT 12, SAMPLE SOCIETY, PUNE, 411001',
-    MOBILE_NO: '98XXXXXX10',
-    CHASI_NO: 'MA3XXXXXXXX123456',
-    ENG_NO: 'K12MXXXX1234',
-    MAKER_DESC: 'MARUTI SUZUKI INDIA LTD',
-    MAKER_MODEL: 'SWIFT VXI',
-    BODY_TYPE_DESC: 'SALOON',
-    FUEL_DESC: 'PETROL',
-    COLOR: 'WHITE',
-    FIT_UPTO: '14-Mar-2034',
-    INSURANCE_COMP: 'SAMPLE GENERAL INSURANCE CO. LTD.',
-    INSURANCE_UPTO: '10-Mar-2027',
-    MANU_MONTH_YR: '02/2019',
-    POLICY_NO: '',
-    PUC_UPTO: '20-Aug-2026',
-    INS_POLICY_NO: 'XXXXXXXX1234',
-    FINANCER_DETAILS: '',
-    PERMIT_NO: '',
-    PERMIT_ISSUE_DATE: '',
-    RC_NP_NO: '',
-    REGISTERED_AT: 'PUNE RTO, Maharashtra',
-    STATUS_AS_ON: '10-Nov-2026',
-    PUCC_UPTO: '20-Aug-2026',
-    PUCC_NO: 'MH01200XXXXXX',
-    STATUS: 'ACTIVE',
-    VEHICLE_SURRENDERED_TO_DEALER: 'N',
-    CURRENTADD_STATENAME: 'Maharashtra',
-    CURRENTADD_DISTRICTCODE: 'PUNE',
-    CURRENTADD_PINCODE: '411001',
-    VEHICLE_CLASS: 'Motor Car(LMV)',
-    VEHICLE_CATEGORY: 'LMV',
-    SEATING_CAPACITY: 5,
-    SLEEPER_CAPACITY: '0',
-    STANDING_CAPACITY: '0',
-    OWNER_SERIAL_NO: 1,
-    UNLADEN_WEIGHT: '875',
-    LADEN_WEIGHT: '1340',
-    WHEELBASE: '2450',
-    NO_OF_CYLINDERS: '4',
-    CUBIC_CAPACITY: 1197,
-    FUEL_NORMS: 'BHARAT STAGE IV',
-    TAX_UPTO: 'LTT',
-    BLACKLIST_STATUS: '',
-    NOC_DETAILS: '',
-    IS_COMMERCIAL: 'N',
+const SAMPLE_VEHICLE_API1 = {
+  REGN_NO: 'MH12AB1234',
+  REGN_DT: '15-Mar-2019',
+  REGN_UPTO: '14-Mar-2034',
+  OWNER_NAME: 'RAHUL SHARMA',
+  F_NAME: 'SURESH SHARMA',
+  STATE_CD: 'MH',
+  RTO_CD: 'MH12',
+  PRESENT_ADDRESS: 'FLAT 12, SAMPLE SOCIETY, PUNE, 411001',
+  PERMANENT_ADDRESS: 'FLAT 12, SAMPLE SOCIETY, PUNE, 411001',
+  MOBILE_NO: '98XXXXXX10',
+  CHASI_NO: 'MA3XXXXXXXX123456',
+  ENG_NO: 'K12MXXXX1234',
+  MAKER_DESC: 'MARUTI SUZUKI INDIA LTD',
+  MAKER_MODEL: 'SWIFT VXI',
+  BODY_TYPE_DESC: 'SALOON',
+  FUEL_DESC: 'PETROL',
+  COLOR: 'WHITE',
+  FIT_UPTO: '14-Mar-2034',
+  INSURANCE_COMP: 'SAMPLE GENERAL INSURANCE CO. LTD.',
+  INSURANCE_UPTO: '10-Mar-2027',
+  MANU_MONTH_YR: '02/2019',
+  POLICY_NO: '',
+  PUC_UPTO: '20-Aug-2026',
+  INS_POLICY_NO: 'XXXXXXXX1234',
+  FINANCER_DETAILS: '',
+  PERMIT_NO: '',
+  PERMIT_ISSUE_DATE: '',
+  RC_NP_NO: '',
+  REGISTERED_AT: 'PUNE RTO, Maharashtra',
+  STATUS_AS_ON: '10-Nov-2026',
+  PUCC_UPTO: '20-Aug-2026',
+  PUCC_NO: 'MH01200XXXXXX',
+  STATUS: 'ACTIVE',
+  VEHICLE_SURRENDERED_TO_DEALER: 'N',
+  CURRENTADD_STATENAME: 'Maharashtra',
+  CURRENTADD_DISTRICTCODE: 'PUNE',
+  CURRENTADD_PINCODE: '411001',
+  VEHICLE_CLASS: 'Motor Car(LMV)',
+  VEHICLE_CATEGORY: 'LMV',
+  SEATING_CAPACITY: 5,
+  SLEEPER_CAPACITY: '0',
+  STANDING_CAPACITY: '0',
+  OWNER_SERIAL_NO: 1,
+  UNLADEN_WEIGHT: '875',
+  LADEN_WEIGHT: '1340',
+  WHEELBASE: '2450',
+  NO_OF_CYLINDERS: '4',
+  CUBIC_CAPACITY: 1197,
+  FUEL_NORMS: 'BHARAT STAGE IV',
+  TAX_UPTO: 'LTT',
+  BLACKLIST_STATUS: '',
+  NOC_DETAILS: '',
+  IS_COMMERCIAL: 'N',
+}
+
+const SAMPLE_VEHICLE_KUNDAN = {
+  'Registration number': 'MH12AB1234',
+  'Owner name': 'RAHUL SHARMA',
+  'Father/husband name': null,
+  'Registration date': '2019-03-15',
+  'RC/fitness valid date': '2034-03-14',
+  'RTO / registering authority': 'MH-12',
+  'Chassis number': 'MA3XXXXXXXX123456',
+  'Engine number': 'K12MXXXX1234',
+  'Manufacturer / maker': 'MARUTI SUZUKI INDIA LTD',
+  Model: 'SWIFT VXI',
+  'Fuel type': 'PETROL',
+  'Emission norms': null,
+  Color: 'WHITE',
+  'Seating capacity': 5,
+  'Finance status / financer': 'On Cash',
+  'Insurance company': 'SAMPLE GENERAL INSURANCE CO. LTD.',
+  'Insurance policy number': 'XXXXXXXX1234',
+  'Insurance valid date': '2027-03-10',
+  'PUCC number': null,
+  'PUCC valid date': null,
+  'Official Parivahan URL with registration number':
+    'https://vahan.parivahan.gov.in/nrservices/faces/user/searchstatus.xhtml?rc_no=MH12AB1234',
+  verification: {
+    'Registration number': 'MH12AB1234',
+    'Owner name': 'RAHUL SHARMA',
+    'Model name': 'SWIFT VXI',
+    'Chassis number': 'MA3XXXXXXXX123456',
+    'Engine number': 'K12MXXXX1234',
+    RTO: 'MH-12',
+    'Registering authority': 'PUNE, Maharashtra',
+    'RC status': 'ACTIVE',
+    Sources: ['smc', '91wheels'],
   },
+}
+
+// Each vehicle provider has its own response format. The docs show the reader's own.
+const VEHICLE_FORMATS = {
+  api1: { label: 'Format 1', data: SAMPLE_VEHICLE_API1 },
+  kundan: { label: 'Format 2', data: SAMPLE_VEHICLE_KUNDAN },
+}
+
+const SAMPLE_DATA = {
   hsrp: {
     status: 'Success',
     regno: 'MH12AB1234',
@@ -980,9 +1065,11 @@ const withCode = (text) =>
 
 const API_TITLES = { vehicle: 'Vehicle (VAHAN)', hsrp: 'HSRP' }
 
-function ApiDocs({ apis }) {
+// isAdminView adds a switch to preview each vehicle format; users see the format of their own provider.
+function ApiDocs({ apis, vehicleProvider, isAdminView = false }) {
   const docApis = apis.filter((a) => Object.hasOwn(API_TITLES, a.id))
   const [apiId, setApiId] = useState('vehicle')
+  const [format, setFormat] = useState(Object.hasOwn(VEHICLE_FORMATS, vehicleProvider) ? vehicleProvider : 'api1')
   const [lang, setLang] = useState('cURL')
   const api = docApis.find((a) => a.id === apiId) ?? docApis[0]
   if (!api) return <p className="muted">These APIs aren't in the catalog.</p>
@@ -998,7 +1085,7 @@ function ApiDocs({ apis }) {
       charged: api.price,
       remaining: callsLeft[api.id],
       calls_left: callsLeft,
-      data: SAMPLE_DATA[api.id],
+      data: api.id === 'vehicle' ? VEHICLE_FORMATS[format].data : SAMPLE_DATA[api.id],
     },
     null,
     2,
@@ -1098,6 +1185,15 @@ function ApiDocs({ apis }) {
             </tbody>
           </table>
         </div>
+        {isAdminView && api.id === 'vehicle' && (
+          <div className="tabs tabs-code" role="tablist" aria-label="Vehicle response format">
+            {Object.entries(VEHICLE_FORMATS).map(([id, f]) => (
+              <button key={id} type="button" role="tab" aria-selected={id === format} onClick={() => setFormat(id)}>
+                {f.label}{id === 'kundan' ? ' (Kundan)' : ' (Vehicle API 1)'}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="code-head">
           <strong>Example: successful {API_TITLES[api.id]} lookup</strong>
           <CopyButton value={response} />
@@ -1166,7 +1262,7 @@ function AdminLayout({ hash, apis }) {
         </nav>
       </aside>
       <div className="admin-main">
-        <Page apis={apis} />
+        <Page apis={apis} isAdminView />
       </div>
     </div>
   )
@@ -1241,7 +1337,7 @@ export default function App() {
           <ApiKeysPage me={me} reload={loadMe} onAuth={afterAuth} />
         ) : isDocsPage ? (
           <div className="docs-page">
-            <ApiDocs apis={catalog.apis} />
+            <ApiDocs apis={catalog.apis} vehicleProvider={me?.providers?.vehicle} isAdminView={me?.role === 'admin'} />
           </div>
         ) : (
           <>

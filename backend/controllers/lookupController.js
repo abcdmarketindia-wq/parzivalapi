@@ -1,5 +1,6 @@
 const apiKeyModel = require('../models/apiKeyModel');
 const limitModel = require('../models/limitModel');
+const userModel = require('../models/userModel');
 const usageModel = require('../models/usageModel');
 const upstreamService = require('../services/upstreamService');
 const { CATALOG, isLive } = require('../config/catalog');
@@ -22,7 +23,9 @@ async function lookup(req, res) {
   const key = rawKey ? await apiKeyModel.findActiveByHash(sha256(rawKey)) : null;
   if (!key) return fail(res, 401, 'Missing or invalid API key. Send it in the X-API-Key header.');
   if (isRateLimited(`v1:${key.id}`, 60)) return fail(res, 429, 'Rate limit exceeded: 60 requests per minute.');
-  if (!isLive(id)) return fail(res, 503, `${api.name} is temporarily unavailable. You were not charged.`);
+  // The provider the admin chose for this user; unset means the API's default.
+  const provider = (await userModel.findById(key.user_id))?.providers?.[id];
+  if (!isLive(id, provider)) return fail(res, 503, `${api.name} is temporarily unavailable. You were not charged.`);
 
   const number = String(req.query.number ?? '').toUpperCase().replace(/[\s-]/g, '');
   if (!api.pattern.test(number)) return fail(res, 400, `Invalid ${api.inputLabel.toLowerCase()}.`);
@@ -40,7 +43,7 @@ async function lookup(req, res) {
 
   let data;
   try {
-    data = await upstreamService.fetchRecord(id, number);
+    data = await upstreamService.fetchRecord(id, number, provider);
   } catch (err) {
     await limitModel.refund(key.user_id, id);
     await usageModel.log(key, id, 502, false);
@@ -48,7 +51,7 @@ async function lookup(req, res) {
     return fail(res, 502, 'The data source is unavailable. You were not charged.');
   }
 
-  if (api.isNotFound?.(data)) {
+  if (data === null) {
     await limitModel.refund(key.user_id, id);
     await usageModel.log(key, id, 404, false);
     return fail(res, 404, 'No record found for this number. You were not charged.');

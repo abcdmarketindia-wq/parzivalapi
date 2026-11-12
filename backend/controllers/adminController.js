@@ -6,7 +6,8 @@ const apiKeyModel = require('../models/apiKeyModel');
 const { issueKey, TOO_MANY_KEYS } = require('./apiKeyController');
 const providerUsageModel = require('../models/providerUsageModel');
 const upstreamService = require('../services/upstreamService');
-const { CATALOG, isLive } = require('../config/catalog');
+const { CATALOG, isLive, isValidProvider, providerOptions } = require('../config/catalog');
+const { resolvedProviders } = require('./dashboardController');
 const { isUniqueViolation } = require('../models/db');
 const { hashPassword } = require('../utils/security');
 const { fail } = require('../utils/response');
@@ -20,12 +21,13 @@ async function listUsers(_req, res) {
   const users = await Promise.all(
     (await userModel.listAll()).map(async (user) => ({
       ...user,
+      providers: resolvedProviders(user),
       limits: await limitModel.byApi(user.id),
       used: await usageModel.chargedByApi(user.id),
       activeKeys: await apiKeyModel.countActive(user.id),
     })),
   );
-  res.json({ users });
+  res.json({ users, providerOptions: providerOptions() });
 }
 
 // New users start with no calls. Calls are only added by recording a sale.
@@ -87,6 +89,17 @@ async function findUserId(req, res) {
   return null;
 }
 
+// Chooses which provider answers this user's lookups on an API that has a choice, e.g. Vehicle.
+async function setUserProvider(req, res) {
+  const id = await findUserId(req, res);
+  if (id === null) return;
+  const { api, provider } = req.body ?? {};
+  if (!Object.hasOwn(providerOptions(), api)) return fail(res, 400, 'That API has no provider choice.');
+  if (!isValidProvider(api, provider)) return fail(res, 400, 'Unknown provider.');
+  await userModel.setProvider(id, api, provider);
+  res.json({ success: true });
+}
+
 async function listUserKeys(req, res) {
   const id = await findUserId(req, res);
   if (id === null) return;
@@ -134,6 +147,7 @@ module.exports = {
   createUser,
   listSales,
   createSale,
+  setUserProvider,
   listUserKeys,
   createUserKey,
   revokeUserKey,
